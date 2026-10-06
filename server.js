@@ -7,7 +7,7 @@ const { resolveMaskUrl } = require('./maskHelper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const FAL_MODEL_ENDPOINT = process.env.FAL_MODEL_ENDPOINT || 'fal-ai/flux-pro/v1/fill';
+const FAL_MODEL_ENDPOINT = process.env.FAL_MODEL_ENDPOINT || 'fal-ai/flux-lora-fill';
 
 // Middlewares
 app.use(cors({
@@ -130,10 +130,16 @@ app.post('/api/generar-corte', async (req, res) => {
     console.log(`[GenerarCorte] Procesando corte '${corteId}' (rostro: ${tipoRostro || 'N/A'})`);
     console.log(`[GenerarCorte] Prompt generado: "${prompt}"`);
 
-    // 4. Preparar payload para Fal.ai
+    // 4. Preparar payload para Fal.ai según especificación oficial de flux-lora-fill
     const inputPayload = {
       prompt,
-      image_url: trimmedImageUrl
+      image_url: trimmedImageUrl,
+      paste_back: true,               // Conserva el rostro original intacto
+      resize_to_original: true,       // Mantiene resolución y aspect ratio original
+      acceleration: 'regular',        // Generación rápida
+      num_inference_steps: 28,
+      guidance_scale: 30,
+      output_format: 'jpeg'
     };
 
     // Si el modelo es de inpainting / fill, resolvemos la máscara (enviada o generada)
@@ -142,7 +148,7 @@ app.post('/api/generar-corte', async (req, res) => {
       inputPayload.mask_url = effectiveMaskUrl;
     }
 
-    console.log(`[GenerarCorte] Invocando modelo '${FAL_MODEL_ENDPOINT}' en Fal.ai...`);
+    console.log(`[GenerarCorte] Invocando '${FAL_MODEL_ENDPOINT}' (paste_back: true, resize_to_original: true)...`);
 
     // 5. Llamada a Fal.ai usando el cliente oficial
     const result = await fal.subscribe(FAL_MODEL_ENDPOINT, {
@@ -150,11 +156,11 @@ app.post('/api/generar-corte', async (req, res) => {
       logs: false
     });
 
-    // 6. Extraer URL de la imagen resultante
+    // 6. Extraer URL de la imagen resultante según el schema documentado (result.data.images[0].url)
     const resultadoUrl =
       result?.data?.images?.[0]?.url ||
-      result?.data?.image?.url ||
-      result?.images?.[0]?.url;
+      result?.images?.[0]?.url ||
+      result?.data?.image?.url;
 
     if (!resultadoUrl) {
       console.error('[GenerarCorte] La respuesta de Fal.ai no contiene una URL de imagen válida:', JSON.stringify(result));
